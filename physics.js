@@ -85,11 +85,12 @@ function createBounds() {
 // [2] circle = top
 // -------------------------
 function createShapes() {
-  if (shapes.length > 0) return;
+  // ALWAYS wipe old shapes from world
+  shapes.forEach(s => Composite.remove(world, s));
+  shapes = [];
 
   const w = window.innerWidth;
   const colors = "rgba(196, 96, 58, 0.18)";
-
   const baseY = -400;
 
   const triangle = Bodies.polygon(w / 2, baseY, 3, 45, {
@@ -108,7 +109,7 @@ function createShapes() {
 
   Composite.add(world, shapes);
 
-  console.log("3 shapes created ✔");
+  console.log("✔ EXACTLY 3 shapes loaded");
 }
 
 // -------------------------
