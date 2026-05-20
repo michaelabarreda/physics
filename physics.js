@@ -3,8 +3,14 @@
 // =========================
 const { Engine, Runner, Bodies, Composite, Body } = Matter;
 
-// Track the animation frame globally so it can be canceled on cleanup
+// Track the animation frame and shapes globally so they persist across Webflow re-loads
 let frameId = null; 
+let triangle = null;
+let rectangle = null;
+let circle = null;
+
+// Initialize global tracking state on the window object
+window.__PHYSICS_STARTED__ = window.__PHYSICS_STARTED__ || false;
 
 // -------------------------
 // GLOBAL SINGLETON (HARD GUARD)
@@ -24,7 +30,6 @@ function initPhysics() {
       Runner.stop(prev.runner);
       Composite.clear(prev.engine.world, false);
       
-      // FIX 1: Cancel any active draw loops before starting a new one
       if (frameId) {
         cancelAnimationFrame(frameId);
         frameId = null;
@@ -70,20 +75,12 @@ function initPhysics() {
   Composite.add(world, [ground, leftWall, rightWall]);
 
   // -------------------------
-  // SHAPES
+  // SHAPES CREATION
   // -------------------------
-  let started = false;
-  
-  // FIX 2: Ensure variables are explicitly fresh when initPhysics runs
-  let triangle = null;
-  let rectangle = null;
-  let circle = null;
-
   function createShapes() {
-    // HARD PREVENT DUPLICATES (extra safety layer)
+    // ULTIMATE GUARD: If any shape body already exists in memory, do absolutely nothing
     if (triangle || rectangle || circle) return;
 
-    const color = "#C4603A";
     triangle = Bodies.polygon(window.innerWidth / 2, -200, 3, 45);
     rectangle = Bodies.rectangle(window.innerWidth / 2, -380, 70, 50);
     circle = Bodies.circle(window.innerWidth / 2, -560, 35);
@@ -92,22 +89,25 @@ function initPhysics() {
   }
 
   // -------------------------
-  // START (GUARDED)
+  // START TRIGGER (GLOBAL-AWARE)
   // -------------------------
-  function startPhysics() {
-    if (started) return;
-    started = true;
+  window.startPhysicsGlobal = function() {
+    if (window.__PHYSICS_STARTED__) return;
+    window.__PHYSICS_STARTED__ = true;
+    createShapes();
+  };
+
+  // Bind the global function to user interaction
+  window.addEventListener("mousemove", window.startPhysicsGlobal, { once: true });
+  window.addEventListener("touchstart", window.startPhysicsGlobal, { once: true });
+
+  // If a previous execution already started the physics, regenerate shapes for the new canvas
+  if (window.__PHYSICS_STARTED__) {
     createShapes();
   }
 
-  // prevent duplicate listeners (Webflow-safe)
-  window.removeEventListener("mousemove", startPhysics);
-  window.removeEventListener("touchstart", startPhysics);
-  window.addEventListener("mousemove", startPhysics, { once: true });
-  window.addEventListener("touchstart", startPhysics, { once: true });
-
   // -------------------------
-  // DRAW LOOP (SAFE SINGLE LOOP)
+  // DRAW LOOP
   // -------------------------
   function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -150,7 +150,7 @@ function initPhysics() {
   // SCROLL BOUNCE
   // -------------------------
   window.addEventListener("scroll", () => {
-    if (!started) return;
+    if (!window.__PHYSICS_STARTED__) return;
     [triangle, rectangle, circle].forEach(shape => {
       if (!shape) return;
       Body.applyForce(shape, shape.position, { x: 0, y: -0.0008 });
