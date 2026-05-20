@@ -1,5 +1,5 @@
 // =========================
-// physics.js (FINAL FIXED - NO DUPLICATES)
+// physics.js (FINAL WEBFLOW FIX - NO DUPLICATES)
 // =========================
 
 const {
@@ -8,21 +8,32 @@ const {
   Runner,
   Bodies,
   Composite,
-  Body,
-  Events
+  Body
 } = Matter;
 
 // -------------------------
-// GLOBAL SAFETY LOCK (CRITICAL)
+// HARD DOM SINGLETON LOCK (CRITICAL)
 // -------------------------
-if (window.__PHYSICS_STATE__ === "running") {
-  console.warn("Physics already running — blocked duplicate instance");
-  throw new Error("Duplicate physics blocked");
+const LOCK_KEY = "physics_v2_initialized";
+
+if (document.documentElement.dataset[LOCK_KEY] === "true") {
+  console.warn("Physics blocked (DOM singleton active)");
+  throw new Error("Duplicate physics instance blocked");
 }
-window.__PHYSICS_STATE__ = "running";
+
+document.documentElement.dataset[LOCK_KEY] = "true";
 
 // -------------------------
-// GLOBAL STATE
+// EXTRA JS SAFETY LOCK
+// -------------------------
+if (window.__PHYSICS_ENGINE_ACTIVE__) {
+  console.warn("Physics already active");
+  throw new Error("Duplicate JS instance blocked");
+}
+window.__PHYSICS_ENGINE_ACTIVE__ = true;
+
+// -------------------------
+// STATE
 // -------------------------
 let engine, render, runner;
 let world;
@@ -30,11 +41,11 @@ let world;
 let shapes = [];
 let started = false;
 
-// store engine globally (for debugging / cleanup)
-window.__PHYSICS_ENGINE__ = null;
+// store engine globally for cleanup safety
+window.__ENGINE = null;
 
 // -------------------------
-// INIT (NO window.load - Webflow safe)
+// INIT ENGINE
 // -------------------------
 function initPhysics() {
   const canvas = document.getElementById("physics-canvas");
@@ -44,18 +55,18 @@ function initPhysics() {
     return;
   }
 
-  // kill previous engine if exists (extra safety)
-  if (window.__PHYSICS_ENGINE__) {
+  // HARD CLEAN PREVIOUS ENGINE IF ANY
+  if (window.__ENGINE) {
     try {
-      Composite.clear(window.__PHYSICS_ENGINE__.world, false);
-      Engine.clear(window.__PHYSICS_ENGINE__);
+      Composite.clear(window.__ENGINE.world, false);
+      Engine.clear(window.__ENGINE);
     } catch (e) {}
   }
 
   engine = Engine.create();
   world = engine.world;
 
-  window.__PHYSICS_ENGINE__ = engine;
+  window.__ENGINE = engine;
 
   render = Render.create({
     canvas: canvas,
@@ -77,7 +88,7 @@ function initPhysics() {
   createBounds();
   bindEvents();
 
-  console.log("Physics initialized ✔");
+  console.log("✔ Physics initialized once");
 }
 
 // -------------------------
@@ -109,10 +120,9 @@ function createBounds() {
 // CREATE EXACTLY 3 SHAPES
 // -------------------------
 function createShapes() {
-  if (window.__SHAPES_CREATED__) return;
-  window.__SHAPES_CREATED__ = true;
+  if (started && shapes.length > 0) return;
 
-  // HARD RESET
+  // HARD RESET WORLD OBJECTS
   shapes.forEach(s => {
     try {
       Composite.remove(world, s);
@@ -140,7 +150,7 @@ function createShapes() {
 
   Composite.add(world, shapes);
 
-  console.log("✔ Exactly 3 shapes created");
+  console.log("✔ EXACT 3 SHAPES CREATED");
 }
 
 // -------------------------
@@ -169,20 +179,20 @@ function bindEvents() {
 }
 
 // -------------------------
-// START SYSTEM
+// START ON FIRST INTERACTION
 // -------------------------
 function startOnce() {
   if (started) return;
 
   started = true;
 
-  console.log("Interaction started ✔");
+  console.log("✔ Interaction triggered");
 
   createShapes();
 }
 
 // -------------------------
-// SCROLL BEHAVIOR
+// SCROLL FORCE + TOWER TRIGGER
 // -------------------------
 function onScroll() {
   if (!started) return;
@@ -203,7 +213,7 @@ function onScroll() {
 }
 
 // -------------------------
-// CONTACT DRIFT
+// DRIFT
 // -------------------------
 function driftToCorner() {
   const w = window.innerWidth;
@@ -218,7 +228,7 @@ function driftToCorner() {
 }
 
 // -------------------------
-// FINAL TOWER (STRICT ORDER)
+// FINAL TOWER
 // -------------------------
 function buildTower() {
   const w = window.innerWidth;
