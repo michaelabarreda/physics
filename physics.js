@@ -1,5 +1,5 @@
 // =========================
-// physics.js (Matter.js Webflow system)
+// physics.js (FIXED Webflow + Matter.js)
 // =========================
 
 const {
@@ -23,7 +23,11 @@ let started = false;
 // -------------------------
 function initPhysics() {
   const canvas = document.getElementById("physics-canvas");
-  if (!canvas) return;
+
+  if (!canvas) {
+    console.warn("Canvas not found");
+    return;
+  }
 
   engine = Engine.create();
   world = engine.world;
@@ -35,21 +39,22 @@ function initPhysics() {
       width: window.innerWidth,
       height: window.innerHeight,
       wireframes: false,
-      background: "transparent"
+      background: "transparent",
+      pixelRatio: window.devicePixelRatio
     }
   });
 
   runner = Runner.create();
+
   Runner.run(runner, engine);
   Render.run(render);
 
   createBounds();
   bindEvents();
-  idleForces();
 }
 
 // -------------------------
-// BOUNDS (GROUND + WALLS)
+// BOUNDS
 // -------------------------
 function createBounds() {
   const w = window.innerWidth;
@@ -74,18 +79,19 @@ function createBounds() {
 }
 
 // -------------------------
-// SHAPES
+// CREATE SHAPES (FORCED SAFE)
 // -------------------------
 function createShapes() {
-  const w = window.innerWidth;
+  if (shapes.length > 0) return; // prevent duplicates
 
+  const w = window.innerWidth;
   const colors = "rgba(196, 96, 58, 0.18)";
 
-  for (let i = 0; i < 8; i++) {
-    let shape;
-
+  for (let i = 0; i < 10; i++) {
     const x = Math.random() * w;
-    const y = -200 - Math.random() * 500;
+    const y = -300 - Math.random() * 600;
+
+    let shape;
 
     if (i % 3 === 0) {
       shape = Bodies.circle(x, y, 30, {
@@ -105,6 +111,8 @@ function createShapes() {
   }
 
   Composite.add(world, shapes);
+
+  console.log("Shapes created ✔");
 }
 
 // -------------------------
@@ -112,11 +120,11 @@ function createShapes() {
 // -------------------------
 function bindEvents() {
 
-  // FIRST TOUCH / MOUSE → DROP SHAPES
+  // FIRST INTERACTION → SPAWN SHAPES
   window.addEventListener("mousemove", startOnce, { once: true });
   window.addEventListener("touchstart", startOnce, { once: true });
 
-  // SCROLL → BOUNCE
+  // SCROLL FORCE
   window.addEventListener("scroll", () => {
     shapes.forEach(s => {
       Body.applyForce(s, s.position, {
@@ -126,7 +134,7 @@ function bindEvents() {
     });
   });
 
-  // CONTACT SECTION TRIGGER
+  // CONTACT DRIFT
   const contact = document.querySelector("#contact-section");
 
   if (contact) {
@@ -153,29 +161,16 @@ function bindEvents() {
 }
 
 // -------------------------
-// START SYSTEM
+// START SHAPES (FIXED)
 // -------------------------
 function startOnce() {
   if (started) return;
+
   started = true;
 
+  console.log("Starting physics ✔");
+
   createShapes();
-}
-
-// -------------------------
-// IDLE FLOAT
-// -------------------------
-function idleForces() {
-  Events.on(engine, "beforeUpdate", () => {
-    if (!started) return;
-
-    shapes.forEach(s => {
-      Body.applyForce(s, s.position, {
-        x: (Math.random() - 0.5) * 0.0002,
-        y: (Math.random() - 0.5) * 0.0002
-      });
-    });
-  });
 }
 
 // -------------------------
@@ -187,14 +182,14 @@ function driftToCorner() {
 
   shapes.forEach(s => {
     Body.applyForce(s, s.position, {
-      x: (w - s.position.x) * 0.0000015,
-      y: (h - s.position.y) * 0.0000015
+      x: (w - s.position.x) * 0.000002,
+      y: (h - s.position.y) * 0.000002
     });
   });
 }
 
 // -------------------------
-// TOWER FORMATION (BOTTOM RIGHT)
+// TOWER BUILD
 // -------------------------
 function buildTower() {
   const w = window.innerWidth;
@@ -204,15 +199,13 @@ function buildTower() {
   const baseY = h - 80;
 
   shapes.forEach((s, i) => {
-    let targetX = baseX;
-    let targetY = baseY - i * 60;
 
     Body.setVelocity(s, { x: 0, y: 0 });
     Body.setAngularVelocity(s, 0);
 
     Body.setPosition(s, {
-      x: targetX,
-      y: targetY
+      x: baseX,
+      y: baseY - i * 55
     });
   });
 }
@@ -228,6 +221,6 @@ window.addEventListener("resize", () => {
 });
 
 // -------------------------
-// START
+// INIT
 // -------------------------
 window.addEventListener("load", initPhysics);
