@@ -82,33 +82,36 @@ function createBounds() {
 // CREATE SHAPES (FORCED SAFE)
 // -------------------------
 function createShapes() {
-  if (shapes.length > 0) return;
+  // HARD RESET (fixes duplicates)
+  shapes.forEach(s => Composite.remove(world, s));
+  shapes = [];
 
   const w = window.innerWidth;
+  const h = window.innerHeight;
+
   const colors = "rgba(196, 96, 58, 0.18)";
+  const startY = -400;
 
-  const startY = -300;
-
-  // 1. CIRCLE
-  const circle = Bodies.circle(w * 0.3, startY, 35, {
+  // BOTTOM → TRIANGLE
+  const triangle = Bodies.polygon(w / 2, startY, 3, 45, {
     render: { fillStyle: colors }
   });
 
-  // 2. RECTANGLE
-  const rectangle = Bodies.rectangle(w * 0.5, startY - 150, 70, 50, {
+  // MIDDLE → RECTANGLE
+  const rectangle = Bodies.rectangle(w / 2, startY - 160, 70, 50, {
     render: { fillStyle: colors }
   });
 
-  // 3. TRIANGLE
-  const triangle = Bodies.polygon(w * 0.7, startY - 300, 3, 40, {
+  // TOP → CIRCLE
+  const circle = Bodies.circle(w / 2, startY - 320, 35, {
     render: { fillStyle: colors }
   });
 
-  shapes.push(circle, rectangle, triangle);
+  shapes.push(triangle, rectangle, circle);
 
   Composite.add(world, shapes);
 
-  console.log("3 shapes created ✔");
+  console.log("Exactly 3 shapes created ✔");
 }
 
 // -------------------------
