@@ -1,40 +1,43 @@
+// =========================
+// SIMPLE CUSTOM RENDERER (WEBFLOW SAFE - FIXED STACKING)
+// =========================
 
-// =========================
-// SIMPLE CUSTOM RENDERER (WEBFLOW SAFE)
-// =========================
 const { Engine, Runner, Bodies, Composite, Body } = Matter;
 
-// 1. HARD CLEANUP: WIPE ALL GLOBAL FOOTPRINTS IMMEDIATELY BEFORE INITIALIZING
+// -------------------------
+// SINGLETON CLEANUP
+// -------------------------
 if (window.__PHYSICS_RUNTIME__) {
   try {
     Runner.stop(window.__PHYSICS_RUNTIME__.runner);
     Composite.clear(window.__PHYSICS_RUNTIME__.engine.world, false);
   } catch (e) {}
 }
+
 if (window.__PHYSICS_FRAME_ID__) {
   cancelAnimationFrame(window.__PHYSICS_FRAME_ID__);
 }
 
-// Reset references globally on rebuild
 window.__TR__ = null;
 window.__RE__ = null;
 window.__CI__ = null;
 
-// Prevent script concurrency layout races
+// prevent duplicate init
 if (window.__PHYSICS_INIT_LOCK__) {
-  console.log("Physics blocked — instance already running.");
+  console.log("Physics blocked — already running.");
 } else {
   window.__PHYSICS_INIT_LOCK__ = true;
   initPhysics();
 }
 
 function initPhysics() {
+
   // -------------------------
-  // CANVAS DETECTION
+  // CANVAS
   // -------------------------
   const canvas = document.getElementById("physics-canvas");
   if (!canvas) return;
-  
+
   const ctx = canvas.getContext("2d");
 
   function resize() {
@@ -44,7 +47,7 @@ function initPhysics() {
   resize();
 
   // -------------------------
-  // ENGINE SETUP
+  // ENGINE
   // -------------------------
   const engine = Engine.create();
   const world = engine.world;
@@ -56,94 +59,134 @@ function initPhysics() {
   // -------------------------
   // BOUNDS
   // -------------------------
-  const ground = Bodies.rectangle(window.innerWidth / 2, window.innerHeight + 40, window.innerWidth, 80, { isStatic: true });
+  const ground = Bodies.rectangle(
+    window.innerWidth / 2,
+    window.innerHeight + 40,
+    window.innerWidth,
+    80,
+    { isStatic: true }
+  );
+
   const leftWall = Bodies.rectangle(-40, window.innerHeight / 2, 80, window.innerHeight, { isStatic: true });
   const rightWall = Bodies.rectangle(window.innerWidth + 40, window.innerHeight / 2, 80, window.innerHeight, { isStatic: true });
 
   Composite.add(world, [ground, leftWall, rightWall]);
 
   // -------------------------
-  // SHAPES CREATION (BALANCED FOR TOWER)
+  // STABLE PHYSICS SETTINGS
+  // -------------------------
+  const stableOptions = {
+    friction: 0.9,
+    frictionStatic: 1,
+    restitution: 0,
+    density: 0.005,
+    sleepThreshold: 20
+  };
+
+  // -------------------------
+  // CREATE SHAPES (ONLY ONCE)
   // -------------------------
   function createShapes() {
+
     const bodies = Composite.allBodies(world);
-    
-    const existingTriangle = bodies.find(b => b.label === "tri");
-    const existingRectangle = bodies.find(b => b.label === "rect");
-    const existingCircle = bodies.find(b => b.label === "circ");
 
-    // Physics options to prevent sliding/rolling apart too easily
-    const stableOptions = { friction: 0.5, frictionStatic: 1, restitution: 0.1 };
+    const triExists = bodies.find(b => b.label === "tri");
+    const rectExists = bodies.find(b => b.label === "rect");
+    const circExists = bodies.find(b => b.label === "circ");
 
-    if (!existingTriangle) {
-      // Spawning the triangle upside down (angle: Math.PI) so it has a flat top to support the rectangle!
-      window.__TR__ = Bodies.polygon(window.innerWidth / 2, -200, 3, 45, { ...stableOptions, angle: Math.PI });
+    if (!triExists) {
+      window.__TR__ = Bodies.polygon(
+        window.innerWidth / 2,
+        -200,
+        3,
+        60,
+        { ...stableOptions, angle: Math.PI }
+      );
+
       window.__TR__.label = "tri";
+      Body.scale(window.__TR__, 1.2, 0.6);
+      Body.setInertia(window.__TR__, Infinity);
+
       Composite.add(world, window.__TR__);
     }
-    if (!existingRectangle) {
-      window.__RE__ = Bodies.rectangle(window.innerWidth / 2, -380, 70, 50, stableOptions);
+
+    if (!rectExists) {
+      window.__RE__ = Bodies.rectangle(
+        window.innerWidth / 2,
+        -350,
+        70,
+        50,
+        stableOptions
+      );
+
       window.__RE__.label = "rect";
+      Body.setInertia(window.__RE__, Infinity);
+
       Composite.add(world, window.__RE__);
     }
-    if (!existingCircle) {
-      window.__CI__ = Bodies.circle(window.innerWidth / 2, -560, 35, stableOptions);
+
+    if (!circExists) {
+      window.__CI__ = Bodies.circle(
+        window.innerWidth / 2,
+        -500,
+        35,
+        stableOptions
+      );
+
       window.__CI__.label = "circ";
+      Body.setInertia(window.__CI__, Infinity);
+
       Composite.add(world, window.__CI__);
     }
 
-    // ABSOLUTE CEILING GUARD
-    const finalCheck = Composite.allBodies(world);
-    let triCount = 0, rectCount = 0, circCount = 0;
-    finalCheck.forEach(b => {
-      if (b.label === "tri") { triCount++; if (triCount > 1) Composite.remove(world, b); }
-      if (b.label === "rect") { rectCount++; if (rectCount > 1) Composite.remove(world, b); }
-      if (b.label === "circ") { circCount++; if (circCount > 1) Composite.remove(world, b); }
+    // safety cleanup (prevents duplicates)
+    const all = Composite.allBodies(world);
+    const seen = { tri: 0, rect: 0, circ: 0 };
+
+    all.forEach(b => {
+      if (b.label === "tri") {
+        seen.tri++;
+        if (seen.tri > 1) Composite.remove(world, b);
+      }
+      if (b.label === "rect") {
+        seen.rect++;
+        if (seen.rect > 1) Composite.remove(world, b);
+      }
+      if (b.label === "circ") {
+        seen.circ++;
+        if (seen.circ > 1) Composite.remove(world, b);
+      }
     });
   }
 
   // -------------------------
-  // START INTERACTION TRIGGER
+  // START TRIGGER
   // -------------------------
-  window.startPhysicsGlobal = function(e) {
-    if (window.__PHYSICS_STARTED__) {
-      cleanupListeners();
-      return;
-    }
-    
+  window.startPhysicsGlobal = function () {
+    if (window.__PHYSICS_STARTED__) return;
+
     window.__PHYSICS_STARTED__ = true;
-    cleanupListeners();
     createShapes();
   };
 
-  function cleanupListeners() {
-    window.removeEventListener("mousemove", window.startPhysicsGlobal);
-    window.removeEventListener("touchstart", window.startPhysicsGlobal);
-  }
-
-  window.addEventListener("mousemove", window.startPhysicsGlobal);
-  window.addEventListener("touchstart", window.startPhysicsGlobal);
-
-  // Safe recovery execution check
-  if (window.__PHYSICS_STARTED__) {
-    createShapes();
-  }
+  window.addEventListener("mousemove", window.startPhysicsGlobal, { once: true });
+  window.addEventListener("touchstart", window.startPhysicsGlobal, { once: true });
 
   // -------------------------
-  // CLEAN RENDERING DRAW LOOP
+  // RENDER LOOP
   // -------------------------
   function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Strictly draw ONLY what is currently tied to our unified engine labels
-    const active = Composite.allBodies(world);
-    const drawTri = active.find(b => b.label === "tri");
-    const drawRect = active.find(b => b.label === "rect");
-    const drawCirc = active.find(b => b.label === "circ");
+    const bodies = Composite.allBodies(world);
 
-    if (drawTri) drawShape(drawTri);
-    if (drawRect) drawShape(drawRect);
-    if (drawCirc) drawShape(drawCirc);
+    const tri = bodies.find(b => b.label === "tri");
+    const rect = bodies.find(b => b.label === "rect");
+    const circ = bodies.find(b => b.label === "circ");
+
+    if (tri) drawShape(tri);
+    if (rect) drawShape(rect);
+    if (circ) drawShape(circ);
 
     window.__PHYSICS_FRAME_ID__ = requestAnimationFrame(draw);
   }
@@ -160,80 +203,48 @@ function initPhysics() {
       ctx.fill();
     } else {
       ctx.beginPath();
-      ctx.moveTo(body.vertices[0].x - body.position.x, body.vertices[0].y - body.position.y);
+      ctx.moveTo(
+        body.vertices[0].x - body.position.x,
+        body.vertices[0].y - body.position.y
+      );
+
       for (let i = 1; i < body.vertices.length; i++) {
-        ctx.lineTo(body.vertices[i].x - body.position.x, body.vertices[i].y - body.position.y);
+        ctx.lineTo(
+          body.vertices[i].x - body.position.x,
+          body.vertices[i].y - body.position.y
+        );
       }
+
       ctx.closePath();
       ctx.fill();
     }
+
     ctx.restore();
   }
 
   draw();
 
   // -------------------------
-  // EVENT FUNCTIONS (PERSISTENCE PROOF)
+  // NATURAL DRIFT (optional subtle interaction)
   // -------------------------
   function handleScrollPhysics() {
     if (!window.__PHYSICS_STARTED__) return;
-    
-    const active = Composite.allBodies(world);
-    const drawTri = active.find(b => b.label === "tri");
-    const drawRect = active.find(b => b.label === "rect");
-    const drawCirc = active.find(b => b.label === "circ");
 
-    [drawTri, drawRect, drawCirc].forEach(shape => {
+    const bodies = Composite.allBodies(world);
+    const tri = bodies.find(b => b.label === "tri");
+    const rect = bodies.find(b => b.label === "rect");
+    const circ = bodies.find(b => b.label === "circ");
+
+    [tri, rect, circ].forEach(shape => {
       if (!shape) return;
-      Body.applyForce(shape, shape.position, { x: 0, y: -0.0008 });
+      Body.applyForce(shape, shape.position, { x: 0, y: -0.0003 });
     });
-
-    // Final Stacking Tower Execution Logic (Perfect Alignment)
-    const atBottom = window.innerHeight + window.scrollY >= document.body.offsetHeight - 50;
-    if (atBottom && drawTri && drawRect && drawCirc) {
-      const targetX = window.innerWidth - 120;
-      const groundY = window.innerHeight - 45; // Just above the static ground boundary
-
-      // 1. Triangle Base (Flipped upside down so its flat top handles weight)
-      Body.setPosition(drawTri, { x: targetX, y: groundY });
-      Body.setVelocity(drawTri, { x: 0, y: 0 });
-      Body.setAngle(drawTri, Math.PI); 
-
-      // 2. Rectangle Middle (Stacked centered on top of triangle platform)
-      Body.setPosition(drawRect, { x: targetX, y: groundY - 45 });
-      Body.setVelocity(drawRect, { x: 0, y: 0 });
-      Body.setAngle(drawRect, 0); 
-
-      // 3. Circle Top (Perfectly balanced directly on the rectangle)
-      Body.setPosition(drawCirc, { x: targetX, y: groundY - 85 });
-      Body.setVelocity(drawCirc, { x: 0, y: 0 });
-    }
   }
 
-  // Clear previous identical window scroll loops to prevent stacking loops
-  window.removeEventListener("scroll", handleScrollPhysics);
   window.addEventListener("scroll", handleScrollPhysics);
 
-  // Intersection Observer Drift Setup
-  const contact = document.querySelector("#contact-section");
-  if (contact) {
-    const observer = new IntersectionObserver(entries => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          const active = Composite.allBodies(world);
-          const drawTri = active.find(b => b.label === "tri");
-          const drawRect = active.find(b => b.label === "rect");
-          const drawCirc = active.find(b => b.label === "circ");
-
-          [drawTri, drawRect, drawCirc].forEach(shape => {
-            if (!shape) return;
-            Body.applyForce(shape, shape.position, { x: 0.002, y: 0.001 });
-          });
-        }
-      });
-    });
-    observer.observe(contact);
-  }
-
+  // -------------------------
+  // RESIZE
+  // -------------------------
   window.addEventListener("resize", resize);
 }
