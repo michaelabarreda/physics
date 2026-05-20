@@ -14,10 +14,14 @@ const {
 // SINGLETON LOCK
 // -------------------------
 if (window.__PHYSICS_ACTIVE__) {
-  throw new Error("Physics already active");
+  console.log("Physics already running");
+} else {
+  window.__PHYSICS_ACTIVE__ = true;
+
+  initPhysics();
 }
 
-window.__PHYSICS_ACTIVE__ = true;
+function initPhysics() {
 
 // -------------------------
 // CANVAS
@@ -333,4 +337,4 @@ window.addEventListener("resize", () => {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
 
-});
+})};
