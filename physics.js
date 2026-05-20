@@ -3,50 +3,38 @@
 // =========================
 const { Engine, Runner, Bodies, Composite, Body } = Matter;
 
-// Track the animation frame and shapes globally so they persist across Webflow re-loads
+// Global tracking variables
 let frameId = null; 
 let triangle = null;
 let rectangle = null;
 let circle = null;
 
-// Initialize global tracking state on the window object
-window.__PHYSICS_STARTED__ = window.__PHYSICS_STARTED__ || false;
-
-// -------------------------
-// GLOBAL SINGLETON (HARD GUARD)
-// -------------------------
-if (window.__PHYSICS_INIT__) {
-  console.log("Physics already initialized — skipping duplicate load");
+// HARD BOUNDARY: Stop multiple scripts from initializing simultaneously
+if (window.__PHYSICS_INIT_LOCK__) {
+  console.log("Physics engine script execution blocked — already running.");
 } else {
-  window.__PHYSICS_INIT__ = true;
+  window.__PHYSICS_INIT_LOCK__ = true;
   initPhysics();
 }
 
 function initPhysics() {
-  // If something already exists, kill it safely
+  // If an old runtime engine instance is active, completely destroy it first
   if (window.__PHYSICS_RUNTIME__) {
-    const prev = window.__PHYSICS_RUNTIME__;
     try {
-      Runner.stop(prev.runner);
-      Composite.clear(prev.engine.world, false);
-      
-      if (frameId) {
-        cancelAnimationFrame(frameId);
-        frameId = null;
-      }
+      Runner.stop(window.__PHYSICS_RUNTIME__.runner);
+      Composite.clear(window.__PHYSICS_RUNTIME__.engine.world, false);
+      if (frameId) cancelAnimationFrame(frameId);
     } catch (e) {
       console.warn("Cleanup skipped:", e);
     }
   }
 
   // -------------------------
-  // CANVAS
+  // CANVAS DETECTION
   // -------------------------
   const canvas = document.getElementById("physics-canvas");
-  if (!canvas) {
-    console.warn("Canvas missing — physics aborted");
-    return;
-  }
+  if (!canvas) return;
+  
   const ctx = canvas.getContext("2d");
 
   function resize() {
@@ -56,7 +44,7 @@ function initPhysics() {
   resize();
 
   // -------------------------
-  // ENGINE
+  // ENGINE SETUP
   // -------------------------
   const engine = Engine.create();
   const world = engine.world;
@@ -75,42 +63,49 @@ function initPhysics() {
   Composite.add(world, [ground, leftWall, rightWall]);
 
   // -------------------------
-  // SHAPES CREATION (LEAK PROOF)
+  // SHAPES CREATION (STRICT TOTAL COUNT GUARD)
   // -------------------------
   function createShapes() {
-    // 1. Remove any old shapes from the world if they accidentally exist
-    if (triangle) Composite.remove(world, triangle);
-    if (rectangle) Composite.remove(world, rectangle);
-    if (circle) Composite.remove(world, circle);
+    // Check Matter's world directly. If we have more than the 3 boundary walls, DO NOT SPAWN.
+    const currentBodies = Composite.allBodies(world);
+    if (currentBodies.length > 3) {
+      console.log("Shapes already present in physics world. Aborting spawn.");
+      return;
+    }
 
-    // 2. Spawn exactly one of each shape
+    // Spawn exactly 1 of each
     triangle = Bodies.polygon(window.innerWidth / 2, -200, 3, 45);
     rectangle = Bodies.rectangle(window.innerWidth / 2, -380, 70, 50);
     circle = Bodies.circle(window.innerWidth / 2, -560, 35);
 
-    // 3. Add them safely
     Composite.add(world, [triangle, rectangle, circle]);
   }
 
   // -------------------------
-  // START TRIGGER (GLOBAL-AWARE)
+  // START TRIGGER (RACE CONDITION PROOF)
   // -------------------------
-  window.startPhysicsGlobal = function() {
-    if (window.__PHYSICS_STARTED__) return;
-    window.__PHYSICS_STARTED__ = true;
+  window.startPhysicsGlobal = function(e) {
+    // If already triggered, immediately unbind everything and exit
+    if (window.__PHYSICS_STARTED__) {
+      cleanupListeners();
+      return;
+    }
     
-    // Remove the other listener immediately to avoid race conditions
-    window.removeEventListener("mousemove", window.startPhysicsGlobal);
-    window.removeEventListener("touchstart", window.startPhysicsGlobal);
-
+    window.__PHYSICS_STARTED__ = true;
+    cleanupListeners();
     createShapes();
   };
 
-  // Bind the global function to user interaction
+  function cleanupListeners() {
+    window.removeEventListener("mousemove", window.startPhysicsGlobal);
+    window.removeEventListener("touchstart", window.startPhysicsGlobal);
+  }
+
+  // Bind interaction triggers
   window.addEventListener("mousemove", window.startPhysicsGlobal);
   window.addEventListener("touchstart", window.startPhysicsGlobal);
 
-  // If a previous execution already started the physics, regenerate shapes safely
+  // Fallback engine check
   if (window.__PHYSICS_STARTED__) {
     createShapes();
   }
@@ -152,11 +147,10 @@ function initPhysics() {
     ctx.restore();
   }
 
-  // Kick off the drawing loop
   draw();
 
   // -------------------------
-  // SCROLL BOUNCE
+  // SCROLL FORCE
   // -------------------------
   window.addEventListener("scroll", () => {
     if (!window.__PHYSICS_STARTED__) return;
@@ -189,7 +183,7 @@ function initPhysics() {
   }
 
   // -------------------------
-  // FINAL TOWER
+  // FINAL STACKING TOWER
   // -------------------------
   window.addEventListener("scroll", () => {
     if (!triangle || !rectangle || !circle) return;
@@ -205,8 +199,5 @@ function initPhysics() {
     Body.setPosition(circle, { x, y: y - 140 });
   });
 
-  // -------------------------
-  // RESIZE SAFE
-  // -------------------------
   window.addEventListener("resize", resize);
 }
