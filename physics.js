@@ -1,5 +1,5 @@
 // =========================
-// physics.js (FIXED Webflow + Matter.js)
+// physics.js (CLEAN + CONTROLLED SYSTEM)
 // =========================
 
 const {
@@ -8,8 +8,7 @@ const {
   Runner,
   Bodies,
   Composite,
-  Body,
-  Events
+  Body
 } = Matter;
 
 let engine, render, runner;
@@ -79,39 +78,37 @@ function createBounds() {
 }
 
 // -------------------------
-// CREATE SHAPES (FORCED SAFE)
+// CREATE EXACTLY 3 SHAPES
+// ORDER IS FIXED:
+// [0] triangle = bottom
+// [1] rectangle = middle
+// [2] circle = top
 // -------------------------
 function createShapes() {
-  // HARD RESET (fixes duplicates)
-  shapes.forEach(s => Composite.remove(world, s));
-  shapes = [];
+  if (shapes.length > 0) return;
 
   const w = window.innerWidth;
-  const h = window.innerHeight;
-
   const colors = "rgba(196, 96, 58, 0.18)";
-  const startY = -400;
 
-  // BOTTOM → TRIANGLE
-  const triangle = Bodies.polygon(w / 2, startY, 3, 45, {
+  const baseY = -400;
+
+  const triangle = Bodies.polygon(w / 2, baseY, 3, 45, {
     render: { fillStyle: colors }
   });
 
-  // MIDDLE → RECTANGLE
-  const rectangle = Bodies.rectangle(w / 2, startY - 160, 70, 50, {
+  const rectangle = Bodies.rectangle(w / 2, baseY - 160, 70, 50, {
     render: { fillStyle: colors }
   });
 
-  // TOP → CIRCLE
-  const circle = Bodies.circle(w / 2, startY - 320, 35, {
+  const circle = Bodies.circle(w / 2, baseY - 320, 35, {
     render: { fillStyle: colors }
   });
 
-  shapes.push(triangle, rectangle, circle);
+  shapes = [triangle, rectangle, circle];
 
   Composite.add(world, shapes);
 
-  console.log("Exactly 3 shapes created ✔");
+  console.log("3 shapes created ✔");
 }
 
 // -------------------------
@@ -119,21 +116,11 @@ function createShapes() {
 // -------------------------
 function bindEvents() {
 
-  // FIRST INTERACTION → SPAWN SHAPES
   window.addEventListener("mousemove", startOnce, { once: true });
   window.addEventListener("touchstart", startOnce, { once: true });
 
-  // SCROLL FORCE
-  window.addEventListener("scroll", () => {
-    shapes.forEach(s => {
-      Body.applyForce(s, s.position, {
-        x: 0,
-        y: -0.0008
-      });
-    });
-  });
+  window.addEventListener("scroll", onScroll);
 
-  // CONTACT DRIFT
   const contact = document.querySelector("#contact-section");
 
   if (contact) {
@@ -147,33 +134,44 @@ function bindEvents() {
 
     observer.observe(contact);
   }
-
-  // PAGE END → TOWER
-  window.addEventListener("scroll", () => {
-    const atBottom =
-      window.innerHeight + window.scrollY >= document.body.offsetHeight - 50;
-
-    if (atBottom) {
-      buildTower();
-    }
-  });
 }
 
 // -------------------------
-// START SHAPES (FIXED)
+// START
 // -------------------------
 function startOnce() {
   if (started) return;
 
   started = true;
 
-  console.log("Starting physics ✔");
+  console.log("Physics started ✔");
 
   createShapes();
 }
 
 // -------------------------
-// CONTACT DRIFT
+// SCROLL FORCE
+// -------------------------
+function onScroll() {
+  if (!started) return;
+
+  shapes.forEach(s => {
+    Body.applyForce(s, s.position, {
+      x: 0,
+      y: -0.0008
+    });
+  });
+
+  const atBottom =
+    window.innerHeight + window.scrollY >= document.body.offsetHeight - 50;
+
+  if (atBottom) {
+    buildTower();
+  }
+}
+
+// -------------------------
+// DRIFT TO CONTACT
 // -------------------------
 function driftToCorner() {
   const w = window.innerWidth;
@@ -188,34 +186,41 @@ function driftToCorner() {
 }
 
 // -------------------------
-// TOWER BUILD
+// FINAL TOWER (STRICT ORDER)
 // -------------------------
 function buildTower() {
   const w = window.innerWidth;
   const h = window.innerHeight;
 
   const baseX = w - 150;
+  const baseY = h - 80;
 
-  const order = {
-    circle: 0,
-    rectangle: 1,
-    polygon: 2
-  };
+  const triangle = shapes[0];
+  const rectangle = shapes[1];
+  const circle = shapes[2];
 
-  shapes.forEach((s) => {
-    let index = s.circleRadius ? 0 : s.vertices.length === 3 ? 2 : 1;
+  Body.setVelocity(triangle, { x: 0, y: 0 });
+  Body.setVelocity(rectangle, { x: 0, y: 0 });
+  Body.setVelocity(circle, { x: 0, y: 0 });
 
-    Body.setVelocity(s, { x: 0, y: 0 });
+  Body.setPosition(triangle, {
+    x: baseX,
+    y: baseY
+  });
 
-    Body.setPosition(s, {
-      x: baseX,
-      y: h - 80 - index * 60
-    });
+  Body.setPosition(rectangle, {
+    x: baseX,
+    y: baseY - 60
+  });
+
+  Body.setPosition(circle, {
+    x: baseX,
+    y: baseY - 120
   });
 }
 
 // -------------------------
-// RESIZE FIX
+// RESIZE
 // -------------------------
 window.addEventListener("resize", () => {
   if (!render) return;
