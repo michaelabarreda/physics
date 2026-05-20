@@ -1,217 +1,130 @@
 // =========================
-// CLEAN SINGLETON PHYSICS
+// SIMPLE CUSTOM RENDERER
 // =========================
 
 const {
   Engine,
-  Render,
   Runner,
   Bodies,
   Composite,
   Body
 } = Matter;
 
-// -----------------------------------
-// DESTROY PREVIOUS INSTANCE
-// -----------------------------------
-if (window.physicsCleanup) {
-  window.physicsCleanup();
+// -------------------------
+// SINGLETON LOCK
+// -------------------------
+if (window.__PHYSICS_ACTIVE__) {
+  throw new Error("Physics already active");
 }
 
-// -----------------------------------
-// GLOBALS
-// -----------------------------------
-let engine;
-let render;
-let runner;
-let world;
+window.__PHYSICS_ACTIVE__ = true;
 
+// -------------------------
+// CANVAS
+// -------------------------
+const canvas = document.getElementById("physics-canvas");
+
+if (!canvas) {
+  throw new Error("Canvas missing");
+}
+
+const ctx = canvas.getContext("2d");
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+// -------------------------
+// ENGINE
+// -------------------------
+const engine = Engine.create();
+const world = engine.world;
+
+const runner = Runner.create();
+
+Runner.run(runner, engine);
+
+// -------------------------
+// BOUNDS
+// -------------------------
+const ground = Bodies.rectangle(
+  window.innerWidth / 2,
+  window.innerHeight + 40,
+  window.innerWidth,
+  80,
+  { isStatic: true }
+);
+
+const leftWall = Bodies.rectangle(
+  -40,
+  window.innerHeight / 2,
+  80,
+  window.innerHeight,
+  { isStatic: true }
+);
+
+const rightWall = Bodies.rectangle(
+  window.innerWidth + 40,
+  window.innerHeight / 2,
+  80,
+  window.innerHeight,
+  { isStatic: true }
+);
+
+Composite.add(world, [
+  ground,
+  leftWall,
+  rightWall
+]);
+
+// -------------------------
+// SHAPES
+// -------------------------
 let started = false;
 
 let triangle;
 let rectangle;
 let circle;
 
-// -----------------------------------
-// INIT
-// -----------------------------------
-function initPhysics() {
-
-  const canvas = document.getElementById("physics-canvas");
-
-  if (!canvas) {
-    console.warn("Canvas not found");
-    return;
-  }
-
-  // CLEAR CANVAS MANUALLY
-  const ctx = canvas.getContext("2d");
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  // ENGINE
-  engine = Engine.create();
-  world = engine.world;
-
-  // RENDER
-  render = Render.create({
-    canvas,
-    engine,
-    options: {
-      width: window.innerWidth,
-      height: window.innerHeight,
-      wireframes: false,
-      background: "transparent"
-    }
-  });
-
-  // RUNNER
-  runner = Runner.create();
-
-  Runner.run(runner, engine);
-  Render.run(render);
-
-  createBounds();
-  bindEvents();
-
-  // GLOBAL CLEANUP FUNCTION
-  window.physicsCleanup = () => {
-
-    try {
-
-      Render.stop(render);
-      Runner.stop(runner);
-
-      Composite.clear(world, false);
-
-      Engine.clear(engine);
-
-      const context = render.canvas.getContext("2d");
-
-      context.clearRect(
-        0,
-        0,
-        render.canvas.width,
-        render.canvas.height
-      );
-
-    } catch (e) {
-      console.warn(e);
-    }
-
-  };
-
-  console.log("Physics initialized");
-}
-
-// -----------------------------------
-// BOUNDS
-// -----------------------------------
-function createBounds() {
-
-  const w = window.innerWidth;
-  const h = window.innerHeight;
-
-  const ground = Bodies.rectangle(
-    w / 2,
-    h + 40,
-    w,
-    80,
-    {
-      isStatic: true,
-      render: { visible: false }
-    }
-  );
-
-  const leftWall = Bodies.rectangle(
-    -40,
-    h / 2,
-    80,
-    h,
-    {
-      isStatic: true,
-      render: { visible: false }
-    }
-  );
-
-  const rightWall = Bodies.rectangle(
-    w + 40,
-    h / 2,
-    80,
-    h,
-    {
-      isStatic: true,
-      render: { visible: false }
-    }
-  );
-
-  Composite.add(world, [
-    ground,
-    leftWall,
-    rightWall
-  ]);
-}
-
-// -----------------------------------
-// CREATE ONLY 3 SHAPES
-// -----------------------------------
 function createShapes() {
 
   if (triangle || rectangle || circle) return;
 
-  const w = window.innerWidth;
+  const color = "#C4603A";
 
-  const color = "rgba(196,96,58,0.18)";
-
-  // TRIANGLE
   triangle = Bodies.polygon(
-    w / 2,
+    window.innerWidth / 2,
     -200,
     3,
-    45,
-    {
-      render: {
-        fillStyle: color
-      }
-    }
+    45
   );
 
-  // RECTANGLE
   rectangle = Bodies.rectangle(
-    w / 2,
+    window.innerWidth / 2,
     -380,
     70,
-    50,
-    {
-      render: {
-        fillStyle: color
-      }
-    }
+    50
   );
 
-  // CIRCLE
   circle = Bodies.circle(
-    w / 2,
+    window.innerWidth / 2,
     -560,
-    35,
-    {
-      render: {
-        fillStyle: color
-      }
-    }
+    35
   );
+
+  triangle.renderColor = color;
+  rectangle.renderColor = color;
+  circle.renderColor = color;
 
   Composite.add(world, [
     triangle,
     rectangle,
     circle
   ]);
-
-  console.log("ONLY 3 SHAPES CREATED");
 }
 
-// -----------------------------------
-// FIRST INTERACTION
-// -----------------------------------
+// -------------------------
+// START
+// -------------------------
 function startPhysics() {
 
   if (started) return;
@@ -221,55 +134,100 @@ function startPhysics() {
   createShapes();
 }
 
-// -----------------------------------
-// EVENTS
-// -----------------------------------
-function bindEvents() {
+window.addEventListener(
+  "mousemove",
+  startPhysics,
+  { once: true }
+);
 
-  window.addEventListener(
-    "mousemove",
-    startPhysics,
-    { once: true }
+window.addEventListener(
+  "touchstart",
+  startPhysics,
+  { once: true }
+);
+
+// -------------------------
+// DRAW LOOP
+// -------------------------
+function draw() {
+
+  ctx.clearRect(
+    0,
+    0,
+    canvas.width,
+    canvas.height
   );
 
-  window.addEventListener(
-    "touchstart",
-    startPhysics,
-    { once: true }
-  );
+  drawShape(triangle);
+  drawShape(rectangle);
+  drawShape(circle);
 
-  window.addEventListener(
-    "scroll",
-    onScroll
-  );
-
-  // CONTACT SECTION
-  const contact =
-    document.querySelector("#contact-section");
-
-  if (contact) {
-
-    const observer =
-      new IntersectionObserver(entries => {
-
-        entries.forEach(entry => {
-
-          if (entry.isIntersecting) {
-            driftToCorner();
-          }
-
-        });
-
-      });
-
-    observer.observe(contact);
-  }
+  requestAnimationFrame(draw);
 }
 
-// -----------------------------------
-// SCROLL FORCE
-// -----------------------------------
-function onScroll() {
+function drawShape(body) {
+
+  if (!body) return;
+
+  ctx.save();
+
+  ctx.translate(
+    body.position.x,
+    body.position.y
+  );
+
+  ctx.rotate(body.angle);
+
+  ctx.fillStyle = "rgba(196,96,58,0.18)";
+
+  // CIRCLE
+  if (body.circleRadius) {
+
+    ctx.beginPath();
+
+    ctx.arc(
+      0,
+      0,
+      body.circleRadius,
+      0,
+      Math.PI * 2
+    );
+
+    ctx.fill();
+  }
+
+  // POLYGON / RECTANGLE
+  else {
+
+    ctx.beginPath();
+
+    ctx.moveTo(
+      body.vertices[0].x - body.position.x,
+      body.vertices[0].y - body.position.y
+    );
+
+    for (let i = 1; i < body.vertices.length; i++) {
+
+      ctx.lineTo(
+        body.vertices[i].x - body.position.x,
+        body.vertices[i].y - body.position.y
+      );
+
+    }
+
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+draw();
+
+// -------------------------
+// SCROLL BOUNCE
+// -------------------------
+window.addEventListener("scroll", () => {
 
   if (!started) return;
 
@@ -289,23 +247,33 @@ function onScroll() {
 
     });
 
-  const atBottom =
-    window.innerHeight +
-    window.scrollY >=
-    document.body.offsetHeight - 50;
+});
 
-  if (atBottom) {
-    buildTower();
-  }
+// -------------------------
+// CONTACT DRIFT
+// -------------------------
+const contact =
+  document.querySelector("#contact-section");
+
+if (contact) {
+
+  const observer =
+    new IntersectionObserver(entries => {
+
+      entries.forEach(entry => {
+
+        if (entry.isIntersecting) {
+          driftToCorner();
+        }
+
+      });
+
+    });
+
+  observer.observe(contact);
 }
 
-// -----------------------------------
-// DRIFT
-// -----------------------------------
 function driftToCorner() {
-
-  const w = window.innerWidth;
-  const h = window.innerHeight;
 
   [triangle, rectangle, circle]
     .forEach(shape => {
@@ -316,24 +284,29 @@ function driftToCorner() {
         shape,
         shape.position,
         {
-          x: (w - shape.position.x) * 0.000002,
-          y: (h - shape.position.y) * 0.000002
+          x: 0.002,
+          y: 0.001
         }
       );
 
     });
+
 }
 
-// -----------------------------------
+// -------------------------
 // FINAL TOWER
-// -----------------------------------
-function buildTower() {
+// -------------------------
+window.addEventListener("scroll", () => {
 
-  const w = window.innerWidth;
-  const h = window.innerHeight;
+  const atBottom =
+    window.innerHeight +
+    window.scrollY >=
+    document.body.offsetHeight - 50;
 
-  const x = w - 120;
-  const y = h - 80;
+  if (!atBottom) return;
+
+  const x = window.innerWidth - 120;
+  const y = window.innerHeight - 80;
 
   Body.setPosition(
     triangle,
@@ -350,30 +323,14 @@ function buildTower() {
     { x, y: y - 140 }
   );
 
-  Body.setVelocity(triangle, { x: 0, y: 0 });
-  Body.setVelocity(rectangle, { x: 0, y: 0 });
-  Body.setVelocity(circle, { x: 0, y: 0 });
-}
+});
 
-// -----------------------------------
+// -------------------------
 // RESIZE
-// -----------------------------------
-window.addEventListener(
-  "resize",
-  () => {
+// -------------------------
+window.addEventListener("resize", () => {
 
-    if (!render) return;
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
 
-    render.canvas.width =
-      window.innerWidth;
-
-    render.canvas.height =
-      window.innerHeight;
-
-  }
-);
-
-// -----------------------------------
-// START
-// -----------------------------------
-initPhysics();
+});
