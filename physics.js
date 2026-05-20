@@ -1,14 +1,10 @@
 // =========================
 // SIMPLE CUSTOM RENDERER (WEBFLOW SAFE)
 // =========================
+const { Engine, Runner, Bodies, Composite, Body } = Matter;
 
-const {
-  Engine,
-  Runner,
-  Bodies,
-  Composite,
-  Body
-} = Matter;
+// Track the animation frame globally so it can be canceled on cleanup
+let frameId = null; 
 
 // -------------------------
 // GLOBAL SINGLETON (HARD GUARD)
@@ -21,14 +17,18 @@ if (window.__PHYSICS_INIT__) {
 }
 
 function initPhysics() {
-
   // If something already exists, kill it safely
   if (window.__PHYSICS_RUNTIME__) {
     const prev = window.__PHYSICS_RUNTIME__;
-
     try {
       Runner.stop(prev.runner);
       Composite.clear(prev.engine.world, false);
+      
+      // FIX 1: Cancel any active draw loops before starting a new one
+      if (frameId) {
+        cancelAnimationFrame(frameId);
+        frameId = null;
+      }
     } catch (e) {
       console.warn("Cleanup skipped:", e);
     }
@@ -38,19 +38,16 @@ function initPhysics() {
   // CANVAS
   // -------------------------
   const canvas = document.getElementById("physics-canvas");
-
   if (!canvas) {
     console.warn("Canvas missing — physics aborted");
     return;
   }
-
   const ctx = canvas.getContext("2d");
 
   function resize() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
   }
-
   resize();
 
   // -------------------------
@@ -61,35 +58,14 @@ function initPhysics() {
   const runner = Runner.create();
 
   window.__PHYSICS_RUNTIME__ = { engine, runner };
-
   Runner.run(runner, engine);
 
   // -------------------------
   // BOUNDS
   // -------------------------
-  const ground = Bodies.rectangle(
-    window.innerWidth / 2,
-    window.innerHeight + 40,
-    window.innerWidth,
-    80,
-    { isStatic: true }
-  );
-
-  const leftWall = Bodies.rectangle(
-    -40,
-    window.innerHeight / 2,
-    80,
-    window.innerHeight,
-    { isStatic: true }
-  );
-
-  const rightWall = Bodies.rectangle(
-    window.innerWidth + 40,
-    window.innerHeight / 2,
-    80,
-    window.innerHeight,
-    { isStatic: true }
-  );
+  const ground = Bodies.rectangle(window.innerWidth / 2, window.innerHeight + 40, window.innerWidth, 80, { isStatic: true });
+  const leftWall = Bodies.rectangle(-40, window.innerHeight / 2, 80, window.innerHeight, { isStatic: true });
+  const rightWall = Bodies.rectangle(window.innerWidth + 40, window.innerHeight / 2, 80, window.innerHeight, { isStatic: true });
 
   Composite.add(world, [ground, leftWall, rightWall]);
 
@@ -97,22 +73,19 @@ function initPhysics() {
   // SHAPES
   // -------------------------
   let started = false;
-
+  
+  // FIX 2: Ensure variables are explicitly fresh when initPhysics runs
   let triangle = null;
   let rectangle = null;
   let circle = null;
 
   function createShapes() {
-
     // HARD PREVENT DUPLICATES (extra safety layer)
     if (triangle || rectangle || circle) return;
 
     const color = "#C4603A";
-
     triangle = Bodies.polygon(window.innerWidth / 2, -200, 3, 45);
-
     rectangle = Bodies.rectangle(window.innerWidth / 2, -380, 70, 50);
-
     circle = Bodies.circle(window.innerWidth / 2, -560, 35);
 
     Composite.add(world, [triangle, rectangle, circle]);
@@ -124,24 +97,19 @@ function initPhysics() {
   function startPhysics() {
     if (started) return;
     started = true;
-
     createShapes();
   }
 
   // prevent duplicate listeners (Webflow-safe)
   window.removeEventListener("mousemove", startPhysics);
   window.removeEventListener("touchstart", startPhysics);
-
   window.addEventListener("mousemove", startPhysics, { once: true });
   window.addEventListener("touchstart", startPhysics, { once: true });
 
   // -------------------------
   // DRAW LOOP (SAFE SINGLE LOOP)
   // -------------------------
-  let frameId = null;
-
   function draw() {
-
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     drawShape(triangle);
@@ -155,10 +123,8 @@ function initPhysics() {
     if (!body) return;
 
     ctx.save();
-
     ctx.translate(body.position.x, body.position.y);
     ctx.rotate(body.angle);
-
     ctx.fillStyle = "rgba(196,96,58,0.18)";
 
     if (body.circleRadius) {
@@ -167,25 +133,17 @@ function initPhysics() {
       ctx.fill();
     } else {
       ctx.beginPath();
-      ctx.moveTo(
-        body.vertices[0].x - body.position.x,
-        body.vertices[0].y - body.position.y
-      );
-
+      ctx.moveTo(body.vertices[0].x - body.position.x, body.vertices[0].y - body.position.y);
       for (let i = 1; i < body.vertices.length; i++) {
-        ctx.lineTo(
-          body.vertices[i].x - body.position.x,
-          body.vertices[i].y - body.position.y
-        );
+        ctx.lineTo(body.vertices[i].x - body.position.x, body.vertices[i].y - body.position.y);
       }
-
       ctx.closePath();
       ctx.fill();
     }
-
     ctx.restore();
   }
 
+  // Kick off the drawing loop
   draw();
 
   // -------------------------
@@ -193,14 +151,9 @@ function initPhysics() {
   // -------------------------
   window.addEventListener("scroll", () => {
     if (!started) return;
-
     [triangle, rectangle, circle].forEach(shape => {
       if (!shape) return;
-
-      Body.applyForce(shape, shape.position, {
-        x: 0,
-        y: -0.0008
-      });
+      Body.applyForce(shape, shape.position, { x: 0, y: -0.0008 });
     });
   });
 
@@ -208,7 +161,6 @@ function initPhysics() {
   // CONTACT DRIFT
   // -------------------------
   const contact = document.querySelector("#contact-section");
-
   if (contact) {
     const observer = new IntersectionObserver(entries => {
       entries.forEach(entry => {
@@ -217,18 +169,13 @@ function initPhysics() {
         }
       });
     });
-
     observer.observe(contact);
   }
 
   function driftToCorner() {
     [triangle, rectangle, circle].forEach(shape => {
       if (!shape) return;
-
-      Body.applyForce(shape, shape.position, {
-        x: 0.002,
-        y: 0.001
-      });
+      Body.applyForce(shape, shape.position, { x: 0.002, y: 0.001 });
     });
   }
 
@@ -238,11 +185,7 @@ function initPhysics() {
   window.addEventListener("scroll", () => {
     if (!triangle || !rectangle || !circle) return;
 
-    const atBottom =
-      window.innerHeight +
-      window.scrollY >=
-      document.body.offsetHeight - 50;
-
+    const atBottom = window.innerHeight + window.scrollY >= document.body.offsetHeight - 50;
     if (!atBottom) return;
 
     const x = window.innerWidth - 120;
