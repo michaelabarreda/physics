@@ -1,3 +1,4 @@
+
 // =========================
 // SIMPLE CUSTOM RENDERER (WEBFLOW SAFE)
 // =========================
@@ -6,18 +7,18 @@ const { Engine, Runner, Bodies, Composite, Body } = Matter;
 // 1. HARD CLEANUP: WIPE ALL GLOBAL FOOTPRINTS IMMEDIATELY BEFORE INITIALIZING
 if (window.__PHYSICS_RUNTIME__) {
   try {
-    Matter.Runner.stop(window.__PHYSICS_RUNTIME__.runner);
-    Matter.Composite.clear(window.__PHYSICS_RUNTIME__.engine.world, false);
+    Runner.stop(window.__PHYSICS_RUNTIME__.runner);
+    Composite.clear(window.__PHYSICS_RUNTIME__.engine.world, false);
   } catch (e) {}
 }
 if (window.__PHYSICS_FRAME_ID__) {
   cancelAnimationFrame(window.__PHYSICS_FRAME_ID__);
 }
 
-// Reset the shape references globally so old iterations cannot be rendered
-window.__SHAPE_TRIANGLE__ = null;
-window.__SHAPE_RECTANGLE__ = null;
-window.__SHAPE_CIRCLE__ = null;
+// Reset references globally on rebuild
+window.__TR__ = null;
+window.__RE__ = null;
+window.__CI__ = null;
 
 // Prevent script concurrency layout races
 if (window.__PHYSICS_INIT_LOCK__) {
@@ -62,19 +63,43 @@ function initPhysics() {
   Composite.add(world, [ground, leftWall, rightWall]);
 
   // -------------------------
-  // SHAPES CREATION (STRICT SINGLETON CEILING)
+  // SHAPES CREATION (BALANCED FOR TOWER)
   // -------------------------
   function createShapes() {
-    // If ANY shape key holds a body reference, absolutely reject spawning any more
-    if (window.__SHAPE_TRIANGLE__ || window.__SHAPE_RECTANGLE__ || window.__SHAPE_CIRCLE__) {
-      return;
+    const bodies = Composite.allBodies(world);
+    
+    const existingTriangle = bodies.find(b => b.label === "tri");
+    const existingRectangle = bodies.find(b => b.label === "rect");
+    const existingCircle = bodies.find(b => b.label === "circ");
+
+    // Physics options to prevent sliding/rolling apart too easily
+    const stableOptions = { friction: 0.5, frictionStatic: 1, restitution: 0.1 };
+
+    if (!existingTriangle) {
+      // Spawning the triangle upside down (angle: Math.PI) so it has a flat top to support the rectangle!
+      window.__TR__ = Bodies.polygon(window.innerWidth / 2, -200, 3, 45, { ...stableOptions, angle: Math.PI });
+      window.__TR__.label = "tri";
+      Composite.add(world, window.__TR__);
+    }
+    if (!existingRectangle) {
+      window.__RE__ = Bodies.rectangle(window.innerWidth / 2, -380, 70, 50, stableOptions);
+      window.__RE__.label = "rect";
+      Composite.add(world, window.__RE__);
+    }
+    if (!existingCircle) {
+      window.__CI__ = Bodies.circle(window.innerWidth / 2, -560, 35, stableOptions);
+      window.__CI__.label = "circ";
+      Composite.add(world, window.__CI__);
     }
 
-    window.__SHAPE_TRIANGLE__ = Bodies.polygon(window.innerWidth / 2, -200, 3, 45);
-    window.__SHAPE_RECTANGLE__ = Bodies.rectangle(window.innerWidth / 2, -380, 70, 50);
-    window.__SHAPE_CIRCLE__ = Bodies.circle(window.innerWidth / 2, -560, 35);
-
-    Composite.add(world, [window.__SHAPE_TRIANGLE__, window.__SHAPE_RECTANGLE__, window.__SHAPE_CIRCLE__]);
+    // ABSOLUTE CEILING GUARD
+    const finalCheck = Composite.allBodies(world);
+    let triCount = 0, rectCount = 0, circCount = 0;
+    finalCheck.forEach(b => {
+      if (b.label === "tri") { triCount++; if (triCount > 1) Composite.remove(world, b); }
+      if (b.label === "rect") { rectCount++; if (rectCount > 1) Composite.remove(world, b); }
+      if (b.label === "circ") { circCount++; if (circCount > 1) Composite.remove(world, b); }
+    });
   }
 
   // -------------------------
@@ -110,10 +135,15 @@ function initPhysics() {
   function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Strictly draw ONLY what is currently tied to our global keys
-    if (window.__SHAPE_TRIANGLE__) drawShape(window.__SHAPE_TRIANGLE__);
-    if (window.__SHAPE_RECTANGLE__) drawShape(window.__SHAPE_RECTANGLE__);
-    if (window.__SHAPE_CIRCLE__) drawShape(window.__SHAPE_CIRCLE__);
+    // Strictly draw ONLY what is currently tied to our unified engine labels
+    const active = Composite.allBodies(world);
+    const drawTri = active.find(b => b.label === "tri");
+    const drawRect = active.find(b => b.label === "rect");
+    const drawCirc = active.find(b => b.label === "circ");
+
+    if (drawTri) drawShape(drawTri);
+    if (drawRect) drawShape(drawRect);
+    if (drawCirc) drawShape(drawCirc);
 
     window.__PHYSICS_FRAME_ID__ = requestAnimationFrame(draw);
   }
@@ -148,21 +178,35 @@ function initPhysics() {
   function handleScrollPhysics() {
     if (!window.__PHYSICS_STARTED__) return;
     
-    const shapes = [window.__SHAPE_TRIANGLE__, window.__SHAPE_RECTANGLE__, window.__SHAPE_CIRCLE__];
-    shapes.forEach(shape => {
+    const active = Composite.allBodies(world);
+    const drawTri = active.find(b => b.label === "tri");
+    const drawRect = active.find(b => b.label === "rect");
+    const drawCirc = active.find(b => b.label === "circ");
+
+    [drawTri, drawRect, drawCirc].forEach(shape => {
       if (!shape) return;
       Body.applyForce(shape, shape.position, { x: 0, y: -0.0008 });
     });
 
-    // Final Stacking Tower Execution Logic
+    // Final Stacking Tower Execution Logic (Perfect Alignment)
     const atBottom = window.innerHeight + window.scrollY >= document.body.offsetHeight - 50;
-    if (atBottom && window.__SHAPE_TRIANGLE__ && window.__SHAPE_RECTANGLE__ && window.__SHAPE_CIRCLE__) {
-      const x = window.innerWidth - 120;
-      const y = window.innerHeight - 80;
+    if (atBottom && drawTri && drawRect && drawCirc) {
+      const targetX = window.innerWidth - 120;
+      const groundY = window.innerHeight - 45; // Just above the static ground boundary
 
-      Body.setPosition(window.__SHAPE_TRIANGLE__, { x, y });
-      Body.setPosition(window.__SHAPE_RECTANGLE__, { x, y: y - 70 });
-      Body.setPosition(window.__SHAPE_CIRCLE__, { x, y: y - 140 });
+      // 1. Triangle Base (Flipped upside down so its flat top handles weight)
+      Body.setPosition(drawTri, { x: targetX, y: groundY });
+      Body.setVelocity(drawTri, { x: 0, y: 0 });
+      Body.setAngle(drawTri, Math.PI); 
+
+      // 2. Rectangle Middle (Stacked centered on top of triangle platform)
+      Body.setPosition(drawRect, { x: targetX, y: groundY - 45 });
+      Body.setVelocity(drawRect, { x: 0, y: 0 });
+      Body.setAngle(drawRect, 0); 
+
+      // 3. Circle Top (Perfectly balanced directly on the rectangle)
+      Body.setPosition(drawCirc, { x: targetX, y: groundY - 85 });
+      Body.setVelocity(drawCirc, { x: 0, y: 0 });
     }
   }
 
@@ -176,8 +220,12 @@ function initPhysics() {
     const observer = new IntersectionObserver(entries => {
       entries.forEach(entry => {
         if (entry.isIntersecting) {
-          const shapes = [window.__SHAPE_TRIANGLE__, window.__SHAPE_RECTANGLE__, window.__SHAPE_CIRCLE__];
-          shapes.forEach(shape => {
+          const active = Composite.allBodies(world);
+          const drawTri = active.find(b => b.label === "tri");
+          const drawRect = active.find(b => b.label === "rect");
+          const drawCirc = active.find(b => b.label === "circ");
+
+          [drawTri, drawRect, drawCirc].forEach(shape => {
             if (!shape) return;
             Body.applyForce(shape, shape.position, { x: 0.002, y: 0.001 });
           });
