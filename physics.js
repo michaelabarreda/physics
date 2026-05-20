@@ -3,7 +3,7 @@
 // =========================
 const { Engine, Runner, Bodies, Composite, Body } = Matter;
 
-// HARD BOUNDARY: Stop multiple scripts from initializing simultaneously
+// HARD BOUNDARY: Stop multiple instances of the script from executing simultaneously
 if (window.__PHYSICS_INIT_LOCK__) {
   console.log("Physics engine script execution blocked — already running.");
 } else {
@@ -12,7 +12,7 @@ if (window.__PHYSICS_INIT_LOCK__) {
 }
 
 function initPhysics() {
-  // Clear any existing animation frame before starting a new loop
+  // Clear any ghost animation frames
   if (window.__PHYSICS_FRAME_ID__) {
     cancelAnimationFrame(window.__PHYSICS_FRAME_ID__);
   }
@@ -61,20 +61,25 @@ function initPhysics() {
   Composite.add(world, [ground, leftWall, rightWall]);
 
   // -------------------------
-  // SHAPES CREATION (PERSISTENT GLOBAL GUARD)
+  // SHAPES CREATION (STRICT SINGLETON IDENTIFIERS)
   // -------------------------
   function createShapes() {
-    // If the shapes ALREADY exist anywhere in window memory, completely skip creation
-    if (window.__PHYSICS_TRIANGLE__ || window.__PHYSICS_RECTANGLE__ || window.__PHYSICS_CIRCLE__) {
+    // If the objects are already tracked globally, DO NOT generate new ones
+    if (window.__SHAPE_TRIANGLE__ && window.__SHAPE_RECTANGLE__ && window.__SHAPE_CIRCLE__) {
       return;
     }
 
-    // Spawn exactly 1 of each and lock them to the window object globally
-    window.__PHYSICS_TRIANGLE__ = Bodies.polygon(window.innerWidth / 2, -200, 3, 45);
-    window.__PHYSICS_RECTANGLE__ = Bodies.rectangle(window.innerWidth / 2, -380, 70, 50);
-    window.__PHYSICS_CIRCLE__ = Bodies.circle(window.innerWidth / 2, -560, 35);
+    // Assign to a permanent, un-resettable global footprint
+    window.__SHAPE_TRIANGLE__ = Bodies.polygon(window.innerWidth / 2, -200, 3, 45);
+    window.__SHAPE_TRIANGLE__.label = "target-triangle";
 
-    Composite.add(world, [window.__PHYSICS_TRIANGLE__, window.__PHYSICS_RECTANGLE__, window.__PHYSICS_CIRCLE__]);
+    window.__SHAPE_RECTANGLE__ = Bodies.rectangle(window.innerWidth / 2, -380, 70, 50);
+    window.__SHAPE_RECTANGLE__.label = "target-rectangle";
+
+    window.__SHAPE_CIRCLE__ = Bodies.circle(window.innerWidth / 2, -560, 35);
+    window.__SHAPE_CIRCLE__.label = "target-circle";
+
+    Composite.add(world, [window.__SHAPE_TRIANGLE__, window.__SHAPE_RECTANGLE__, window.__SHAPE_CIRCLE__]);
   }
 
   // -------------------------
@@ -96,32 +101,36 @@ function initPhysics() {
     window.removeEventListener("touchstart", window.startPhysicsGlobal);
   }
 
-  // Bind interaction triggers
   window.addEventListener("mousemove", window.startPhysicsGlobal);
   window.addEventListener("touchstart", window.startPhysicsGlobal);
 
-  // Fallback engine check
   if (window.__PHYSICS_STARTED__) {
     createShapes();
   }
 
   // -------------------------
-  // DRAW LOOP
+  // DRAW LOOP (DIRECT ENGINE FILTERING)
   // -------------------------
   function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Always draw strictly from the global window state references
-    drawShape(window.__PHYSICS_TRIANGLE__);
-    drawShape(window.__PHYSICS_RECTANGLE__);
-    drawShape(window.__PHYSICS_CIRCLE__);
+    // Fetch every single body currently living inside the engine
+    const allActiveBodies = Composite.allBodies(world);
+
+    // Look for EXACTLY one instance of each label type to render
+    const currentTriangle = allActiveBodies.find(b => b.label === "target-triangle");
+    const currentRectangle = allActiveBodies.find(b => b.label === "target-rectangle");
+    const currentCircle = allActiveBodies.find(b => b.label === "target-circle");
+
+    // Pass them safely to the renderer
+    if (currentTriangle) drawShape(currentTriangle);
+    if (currentRectangle) drawShape(currentRectangle);
+    if (currentCircle) drawShape(currentCircle);
 
     window.__PHYSICS_FRAME_ID__ = requestAnimationFrame(draw);
   }
 
   function drawShape(body) {
-    if (!body) return;
-
     ctx.save();
     ctx.translate(body.position.x, body.position.y);
     ctx.rotate(body.angle);
@@ -150,7 +159,7 @@ function initPhysics() {
   // -------------------------
   window.addEventListener("scroll", () => {
     if (!window.__PHYSICS_STARTED__) return;
-    [window.__PHYSICS_TRIANGLE__, window.__PHYSICS_RECTANGLE__, window.__PHYSICS_CIRCLE__].forEach(shape => {
+    [window.__SHAPE_TRIANGLE__, window.__SHAPE_RECTANGLE__, window.__SHAPE_CIRCLE__].forEach(shape => {
       if (!shape) return;
       Body.applyForce(shape, shape.position, { x: 0, y: -0.0008 });
     });
@@ -172,7 +181,7 @@ function initPhysics() {
   }
 
   function driftToCorner() {
-    [window.__PHYSICS_TRIANGLE__, window.__PHYSICS_RECTANGLE__, window.__PHYSICS_CIRCLE__].forEach(shape => {
+    [window.__SHAPE_TRIANGLE__, window.__SHAPE_RECTANGLE__, window.__SHAPE_CIRCLE__].forEach(shape => {
       if (!shape) return;
       Body.applyForce(shape, shape.position, { x: 0.002, y: 0.001 });
     });
@@ -182,7 +191,7 @@ function initPhysics() {
   // FINAL STACKING TOWER
   // -------------------------
   window.addEventListener("scroll", () => {
-    if (!window.__PHYSICS_TRIANGLE__ || !window.__PHYSICS_RECTANGLE__ || !window.__PHYSICS_CIRCLE__) return;
+    if (!window.__SHAPE_TRIANGLE__ || !window.__SHAPE_RECTANGLE__ || !window.__SHAPE_CIRCLE__) return;
 
     const atBottom = window.innerHeight + window.scrollY >= document.body.offsetHeight - 50;
     if (!atBottom) return;
@@ -190,9 +199,9 @@ function initPhysics() {
     const x = window.innerWidth - 120;
     const y = window.innerHeight - 80;
 
-    Body.setPosition(window.__PHYSICS_TRIANGLE__, { x, y });
-    Body.setPosition(window.__PHYSICS_RECTANGLE__, { x, y: y - 70 });
-    Body.setPosition(window.__PHYSICS_CIRCLE__, { x, y: y - 140 });
+    Body.setPosition(window.__SHAPE_TRIANGLE__, { x, y });
+    Body.setPosition(window.__SHAPE_RECTANGLE__, { x, y: y - 70 });
+    Body.setPosition(window.__SHAPE_CIRCLE__, { x, y: y - 140 });
   });
 
   window.addEventListener("resize", resize);
