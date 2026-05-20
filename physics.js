@@ -75,16 +75,20 @@ function initPhysics() {
   Composite.add(world, [ground, leftWall, rightWall]);
 
   // -------------------------
-  // SHAPES CREATION
+  // SHAPES CREATION (LEAK PROOF)
   // -------------------------
   function createShapes() {
-    // ULTIMATE GUARD: If any shape body already exists in memory, do absolutely nothing
-    if (triangle || rectangle || circle) return;
+    // 1. Remove any old shapes from the world if they accidentally exist
+    if (triangle) Composite.remove(world, triangle);
+    if (rectangle) Composite.remove(world, rectangle);
+    if (circle) Composite.remove(world, circle);
 
+    // 2. Spawn exactly one of each shape
     triangle = Bodies.polygon(window.innerWidth / 2, -200, 3, 45);
     rectangle = Bodies.rectangle(window.innerWidth / 2, -380, 70, 50);
     circle = Bodies.circle(window.innerWidth / 2, -560, 35);
 
+    // 3. Add them safely
     Composite.add(world, [triangle, rectangle, circle]);
   }
 
@@ -94,14 +98,19 @@ function initPhysics() {
   window.startPhysicsGlobal = function() {
     if (window.__PHYSICS_STARTED__) return;
     window.__PHYSICS_STARTED__ = true;
+    
+    // Remove the other listener immediately to avoid race conditions
+    window.removeEventListener("mousemove", window.startPhysicsGlobal);
+    window.removeEventListener("touchstart", window.startPhysicsGlobal);
+
     createShapes();
   };
 
   // Bind the global function to user interaction
-  window.addEventListener("mousemove", window.startPhysicsGlobal, { once: true });
-  window.addEventListener("touchstart", window.startPhysicsGlobal, { once: true });
+  window.addEventListener("mousemove", window.startPhysicsGlobal);
+  window.addEventListener("touchstart", window.startPhysicsGlobal);
 
-  // If a previous execution already started the physics, regenerate shapes for the new canvas
+  // If a previous execution already started the physics, regenerate shapes safely
   if (window.__PHYSICS_STARTED__) {
     createShapes();
   }
