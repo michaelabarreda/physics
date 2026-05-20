@@ -192,16 +192,21 @@ function buildTower() {
   const h = window.innerHeight;
 
   const baseX = w - 150;
-  const baseY = h - 80;
 
-  shapes.forEach((s, i) => {
+  const order = {
+    circle: 0,
+    rectangle: 1,
+    polygon: 2
+  };
+
+  shapes.forEach((s) => {
+    let index = s.circleRadius ? 0 : s.vertices.length === 3 ? 2 : 1;
 
     Body.setVelocity(s, { x: 0, y: 0 });
-    Body.setAngularVelocity(s, 0);
 
     Body.setPosition(s, {
       x: baseX,
-      y: baseY - i * 55
+      y: h - 80 - index * 60
     });
   });
 }
