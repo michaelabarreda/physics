@@ -1,5 +1,5 @@
 // =========================
-// physics.js (CLEAN + CONTROLLED SYSTEM)
+// physics.js (WEBFLOW SAFE + NO DUPLICATES)
 // =========================
 
 const {
@@ -8,7 +8,8 @@ const {
   Runner,
   Bodies,
   Composite,
-  Body
+  Body,
+  Events
 } = Matter;
 
 let engine, render, runner;
@@ -17,16 +18,30 @@ let world;
 let shapes = [];
 let started = false;
 
+// Prevent multiple full initializations
+window.__PHYSICS_RUNNING__ = false;
+
 // -------------------------
-// INIT
+// INIT (wait for canvas safely)
 // -------------------------
 function initPhysics() {
-  const canvas = document.getElementById("physics-canvas");
+  const waitForCanvas = setInterval(() => {
+    const canvas = document.getElementById("physics-canvas");
 
-  if (!canvas) {
-    console.warn("Canvas not found");
-    return;
-  }
+    if (!canvas) return;
+
+    clearInterval(waitForCanvas);
+    startEngine(canvas);
+
+  }, 50);
+}
+
+// -------------------------
+// ENGINE START (ONLY ONCE)
+// -------------------------
+function startEngine(canvas) {
+  if (window.__PHYSICS_RUNNING__) return;
+  window.__PHYSICS_RUNNING__ = true;
 
   engine = Engine.create();
   world = engine.world;
@@ -50,6 +65,8 @@ function initPhysics() {
 
   createBounds();
   bindEvents();
+
+  console.log("Physics initialized ✔");
 }
 
 // -------------------------
@@ -79,37 +96,30 @@ function createBounds() {
 
 // -------------------------
 // CREATE EXACTLY 3 SHAPES
-// ORDER IS FIXED:
-// [0] triangle = bottom
-// [1] rectangle = middle
-// [2] circle = top
 // -------------------------
 function createShapes() {
-  // ALWAYS wipe old shapes from world
-  shapes.forEach(s => Composite.remove(world, s));
-  shapes = [];
+  if (shapes.length > 0) return;
 
   const w = window.innerWidth;
-  const colors = "rgba(196, 96, 58, 0.18)";
-  const baseY = -400;
+  const color = "rgba(196, 96, 58, 0.18)";
 
-  const triangle = Bodies.polygon(w / 2, baseY, 3, 45, {
-    render: { fillStyle: colors }
+  const triangle = Bodies.polygon(w / 2, -400, 3, 45, {
+    render: { fillStyle: color }
   });
 
-  const rectangle = Bodies.rectangle(w / 2, baseY - 160, 70, 50, {
-    render: { fillStyle: colors }
+  const rectangle = Bodies.rectangle(w / 2, -560, 70, 50, {
+    render: { fillStyle: color }
   });
 
-  const circle = Bodies.circle(w / 2, baseY - 320, 35, {
-    render: { fillStyle: colors }
+  const circle = Bodies.circle(w / 2, -720, 35, {
+    render: { fillStyle: color }
   });
 
   shapes = [triangle, rectangle, circle];
 
   Composite.add(world, shapes);
 
-  console.log("✔ EXACTLY 3 shapes loaded");
+  console.log("3 shapes created ✔");
 }
 
 // -------------------------
@@ -117,11 +127,14 @@ function createShapes() {
 // -------------------------
 function bindEvents() {
 
+  // FIRST INTERACTION → SPAWN
   window.addEventListener("mousemove", startOnce, { once: true });
   window.addEventListener("touchstart", startOnce, { once: true });
 
+  // SCROLL BOUNCE
   window.addEventListener("scroll", onScroll);
 
+  // CONTACT DRIFT
   const contact = document.querySelector("#contact-section");
 
   if (contact) {
@@ -138,20 +151,20 @@ function bindEvents() {
 }
 
 // -------------------------
-// START
+// START SHAPES
 // -------------------------
 function startOnce() {
   if (started) return;
 
   started = true;
 
-  console.log("Physics started ✔");
+  console.log("Interaction started ✔");
 
   createShapes();
 }
 
 // -------------------------
-// SCROLL FORCE
+// SCROLL FORCE + TOWER TRIGGER
 // -------------------------
 function onScroll() {
   if (!started) return;
@@ -172,7 +185,7 @@ function onScroll() {
 }
 
 // -------------------------
-// DRIFT TO CONTACT
+// CONTACT DRIFT
 // -------------------------
 function driftToCorner() {
   const w = window.innerWidth;
@@ -187,7 +200,7 @@ function driftToCorner() {
 }
 
 // -------------------------
-// FINAL TOWER (STRICT ORDER)
+// FINAL TOWER
 // -------------------------
 function buildTower() {
   const w = window.innerWidth;
@@ -231,6 +244,6 @@ window.addEventListener("resize", () => {
 });
 
 // -------------------------
-// INIT
+// START
 // -------------------------
 window.addEventListener("load", initPhysics);
